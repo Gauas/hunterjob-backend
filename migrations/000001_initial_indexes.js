@@ -7,11 +7,18 @@ const migrations = db.getCollection("_migrations");
 if (migrations.findOne({ _id: version })) {
   print(`Migration ${version} has already been applied.`);
 } else {
-  db.getCollection("jobs").createIndexes([
-    { key: { original_url: 1 }, name: "original_url_unique", unique: true },
-    { key: { fingerprint: 1 }, name: "fingerprint" },
-    { key: { active: 1, last_seen_at: -1 }, name: "active_last_seen_at" },
-  ]);
+  db.getCollection("jobs").createIndex(
+    { original_url: 1 },
+    { name: "original_url_unique", unique: true },
+  );
+  db.getCollection("jobs").createIndex(
+    { fingerprint: 1 },
+    { name: "fingerprint" },
+  );
+  db.getCollection("jobs").createIndex(
+    { active: 1, last_seen_at: -1 },
+    { name: "active_last_seen_at" },
+  );
   db.getCollection("companies").createIndex(
     { slug: 1 },
     { name: "slug_unique", unique: true },
@@ -24,9 +31,6 @@ if (migrations.findOne({ _id: version })) {
     { job_id: 1, created_at: -1 },
     { name: "job_id_created_at" },
   );
-
-  //test
-
   migrations.insertOne({
     _id: version,
     applied_at: new Date(),
