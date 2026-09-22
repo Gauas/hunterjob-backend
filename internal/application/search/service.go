@@ -8,8 +8,11 @@ import (
 )
 
 type Intent struct {
-	Roles, Locations, Levels, Skills []string `json:"roles,omitempty"`
-	ExperienceMax                    int      `json:"experience_max,omitempty"`
+	Roles         []string `json:"roles,omitempty"`
+	Locations     []string `json:"locations,omitempty"`
+	Levels        []string `json:"levels,omitempty"`
+	Skills        []string `json:"skills,omitempty"`
+	ExperienceMax int      `json:"experience_max,omitempty"`
 }
 
 type Provider interface {
