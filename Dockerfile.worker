@@ -2,6 +2,6 @@ FROM golang:1.27-alpine AS build
 WORKDIR /src
 COPY . .
 RUN go mod tidy && CGO_ENABLED=0 go build -o /worker ./cmd/crawler
-FROM gcr.io/distroless/static-debian12
+FROM alpine:3.22
 COPY --from=build /worker /worker
 ENTRYPOINT ["/worker"]

@@ -25,6 +25,8 @@ if (migrations.findOne({ _id: version })) {
     { name: "job_id_created_at" },
   );
 
+  //test
+
   migrations.insertOne({
     _id: version,
     applied_at: new Date(),
