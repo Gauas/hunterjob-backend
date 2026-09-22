@@ -29,6 +29,7 @@ type Job struct {
 	Experience      Experience         `bson:"experience" json:"experience"`
 	Skills          []string           `bson:"skills" json:"skills"`
 	Description     string             `bson:"description" json:"description"`
+	ExpiredAt       *time.Time         `bson:"expired_at,omitempty" json:"expired_at,omitempty"`
 	FirstSeenAt     time.Time          `bson:"first_seen_at" json:"first_seen_at"`
 	LastSeenAt      time.Time          `bson:"last_seen_at" json:"last_seen_at"`
 	Active          bool               `bson:"active" json:"active"`

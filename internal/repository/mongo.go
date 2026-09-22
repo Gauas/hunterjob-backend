@@ -99,6 +99,47 @@ func (s *MongoRepository) EnabledSourceIDs(ctx context.Context) ([]primitive.Obj
 	return ids, e
 }
 
+// DueSources returns enabled sources whose per-company crawl schedule is due.
+// Sources created before next_crawl_at was introduced are considered immediately due.
+func (s *MongoRepository) DueSources(ctx context.Context, now time.Time) ([]company.Source, error) {
+	filter := bson.M{"enabled": true, "$or": bson.A{
+		bson.M{"next_crawl_at": bson.M{"$lte": now}},
+		bson.M{"next_crawl_at": bson.M{"$exists": false}},
+	}}
+	cur, err := s.DB.Collection("career_sources").Find(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	defer cur.Close(ctx)
+	var sources []company.Source
+	return sources, cur.All(ctx, &sources)
+}
+
+func (s *MongoRepository) MarkSourceScheduled(ctx context.Context, source company.Source, now time.Time) error {
+	interval := source.CrawlIntervalMinutes
+	if interval <= 0 {
+		interval = 360
+	}
+	_, err := s.DB.Collection("career_sources").UpdateOne(ctx, bson.M{"_id": source.ID}, bson.M{"$set": bson.M{
+		"last_scheduled_at": now,
+		"next_crawl_at":     now.Add(time.Duration(interval) * time.Minute),
+		"updated_at":        now,
+	}})
+	return err
+}
+
+func (s *MongoRepository) RecordSourceCrawl(ctx context.Context, id primitive.ObjectID, now time.Time, crawlErr error) error {
+	update := bson.M{"$set": bson.M{"updated_at": now}}
+	if crawlErr == nil {
+		update["$set"].(bson.M)["last_crawled_at"] = now
+		update["$set"].(bson.M)["consecutive_failures"] = 0
+	} else {
+		update["$inc"] = bson.M{"consecutive_failures": 1}
+	}
+	_, err := s.DB.Collection("career_sources").UpdateOne(ctx, bson.M{"_id": id}, update)
+	return err
+}
+
 func (s *MongoRepository) SourceExists(ctx context.Context, id primitive.ObjectID) (bool, error) {
 	n, e := s.DB.Collection("career_sources").CountDocuments(ctx, bson.M{"_id": id, "enabled": true})
 	return n > 0, e
@@ -106,7 +147,7 @@ func (s *MongoRepository) SourceExists(ctx context.Context, id primitive.ObjectI
 
 func (s *MongoRepository) SearchCandidates(ctx context.Context, in appsearch.Intent, limit int64) ([]job.Job, error) {
 	f := bson.M{"active": true}
-	ands := bson.A{}
+	ands := bson.A{unexpiredFilter(time.Now().UTC())}
 
 	if len(in.Roles) > 0 {
 		ors := bson.A{}
@@ -176,7 +217,7 @@ func (s *MongoRepository) CountJobs(ctx context.Context, f bson.M) (int64, error
 
 func (s *MongoRepository) Job(ctx context.Context, id primitive.ObjectID) (job.Job, error) {
 	var j job.Job
-	e := s.DB.Collection("jobs").FindOne(ctx, bson.M{"_id": id}).Decode(&j)
+	e := s.DB.Collection("jobs").FindOne(ctx, bson.M{"_id": id, "active": true, "$and": bson.A{unexpiredFilter(time.Now().UTC())}}).Decode(&j)
 	return j, e
 }
 
@@ -213,6 +254,26 @@ func (s *MongoRepository) UpsertJob(ctx context.Context, j job.Job) error {
 		j.CreatedAt = now
 	}
 
-	_, e := s.DB.Collection("jobs").UpdateOne(ctx, bson.M{"original_url": j.OriginalURL}, bson.M{"$set": j, "$setOnInsert": bson.M{"first_seen_at": j.FirstSeenAt, "created_at": j.CreatedAt}}, options.Update().SetUpsert(true))
+	set := bson.M{}
+	raw, e := bson.Marshal(j)
+	if e != nil {
+		return e
+	}
+	if e = bson.Unmarshal(raw, &set); e != nil {
+		return e
+	}
+	delete(set, "_id")
+	delete(set, "first_seen_at")
+	delete(set, "created_at")
+	filter := bson.M{"$or": bson.A{bson.M{"original_url": j.OriginalURL}, bson.M{"fingerprint": j.Fingerprint}}}
+	_, e = s.DB.Collection("jobs").UpdateOne(ctx, filter, bson.M{"$set": set, "$setOnInsert": bson.M{"first_seen_at": j.FirstSeenAt, "created_at": j.CreatedAt}}, options.Update().SetUpsert(true))
 	return e
+}
+
+func unexpiredFilter(now time.Time) bson.M {
+	return bson.M{"$or": bson.A{
+		bson.M{"expired_at": bson.M{"$exists": false}},
+		bson.M{"expired_at": nil},
+		bson.M{"expired_at": bson.M{"$gt": now}},
+	}}
 }

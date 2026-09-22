@@ -68,6 +68,9 @@ func TestListJobsUsesValidatedFiltersAndPagination(t *testing.T) {
 	if repository.filter["active"] != true || repository.filter["locations.remote"] != true {
 		t.Fatalf("unexpected filter: %#v", repository.filter)
 	}
+	if _, ok := repository.filter["$and"]; !ok {
+		t.Fatalf("expiration filter is missing: %#v", repository.filter)
+	}
 	keywordFilter := repository.filter["$or"].(bson.A)[0].(bson.M)["title"].(bson.M)["$regex"]
 	if keywordFilter != "go\\.\\+" {
 		t.Fatalf("keyword regex = %q, want escaped literal", keywordFilter)

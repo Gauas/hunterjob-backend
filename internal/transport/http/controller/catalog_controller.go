@@ -66,7 +66,7 @@ func (h CatalogController) LatestJobs(c *gin.Context) {
 	if !ok {
 		return
 	}
-	jobs, err := h.repository.ListJobs(c, bson.M{"active": true}, 0, limit)
+	jobs, err := h.repository.ListJobs(c, bson.M{"active": true, "$and": bson.A{unexpiredJobs(time.Now().UTC())}}, 0, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not load jobs"})
 		return
@@ -128,7 +128,7 @@ func (h CatalogController) ListCompanies(c *gin.Context) {
 }
 
 func jobFilter(c *gin.Context) (bson.M, bool) {
-	filter := bson.M{"active": true}
+	filter := bson.M{"active": true, "$and": bson.A{unexpiredJobs(time.Now().UTC())}}
 	active, hasActive, ok := optionalBool(c, "active")
 	if !ok {
 		return nil, false
@@ -158,6 +158,14 @@ func jobFilter(c *gin.Context) (bson.M, bool) {
 		filter["locations.remote"] = remote
 	}
 	return filter, true
+}
+
+func unexpiredJobs(now time.Time) bson.M {
+	return bson.M{"$or": bson.A{
+		bson.M{"expired_at": bson.M{"$exists": false}},
+		bson.M{"expired_at": nil},
+		bson.M{"expired_at": bson.M{"$gt": now}},
+	}}
 }
 
 func optionalBool(c *gin.Context, name string) (bool, bool, bool) {

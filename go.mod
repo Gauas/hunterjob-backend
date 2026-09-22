@@ -3,7 +3,6 @@ module github.com/hunterjob/hunterjob/api
 go 1.27.0
 
 require (
-	github.com/PuerkitoBio/goquery v1.10.3
 	github.com/gin-gonic/gin v1.11.0
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/google/uuid v1.6.0
@@ -12,7 +11,6 @@ require (
 )
 
 require (
-	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/bytedance/sonic v1.14.0 // indirect
 	github.com/bytedance/sonic/loader v0.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
