@@ -156,7 +156,11 @@ func (s *MongoRepository) Sources(ctx context.Context) ([]company.Source, error)
 }
 
 func (s *MongoRepository) Jobs(ctx context.Context, f bson.M, limit int64) ([]job.Job, error) {
-	cur, e := s.DB.Collection("jobs").Find(ctx, f, options.Find().SetLimit(limit).SetSort(bson.D{{Key: "last_seen_at", Value: -1}}))
+	return s.ListJobs(ctx, f, 0, limit)
+}
+
+func (s *MongoRepository) ListJobs(ctx context.Context, f bson.M, skip, limit int64) ([]job.Job, error) {
+	cur, e := s.DB.Collection("jobs").Find(ctx, f, options.Find().SetSkip(skip).SetLimit(limit).SetSort(bson.D{{Key: "last_seen_at", Value: -1}}))
 	if e != nil {
 		return nil, e
 	}
@@ -166,10 +170,33 @@ func (s *MongoRepository) Jobs(ctx context.Context, f bson.M, limit int64) ([]jo
 	return js, e
 }
 
+func (s *MongoRepository) CountJobs(ctx context.Context, f bson.M) (int64, error) {
+	return s.DB.Collection("jobs").CountDocuments(ctx, f)
+}
+
 func (s *MongoRepository) Job(ctx context.Context, id primitive.ObjectID) (job.Job, error) {
 	var j job.Job
 	e := s.DB.Collection("jobs").FindOne(ctx, bson.M{"_id": id}).Decode(&j)
 	return j, e
+}
+
+func (s *MongoRepository) TrackClick(ctx context.Context, jobID primitive.ObjectID, createdAt time.Time) error {
+	_, err := s.DB.Collection("click_events").InsertOne(ctx, bson.M{"job_id": jobID, "created_at": createdAt})
+	return err
+}
+
+func (s *MongoRepository) ListCompanies(ctx context.Context, skip, limit int64) ([]company.Company, error) {
+	cur, err := s.DB.Collection("companies").Find(ctx, bson.M{}, options.Find().SetSkip(skip).SetLimit(limit).SetSort(bson.D{{Key: "name", Value: 1}}))
+	if err != nil {
+		return nil, err
+	}
+	defer cur.Close(ctx)
+	var companies []company.Company
+	return companies, cur.All(ctx, &companies)
+}
+
+func (s *MongoRepository) CountCompanies(ctx context.Context) (int64, error) {
+	return s.DB.Collection("companies").CountDocuments(ctx, bson.M{})
 }
 
 func (s *MongoRepository) UpsertJob(ctx context.Context, j job.Job) error {
