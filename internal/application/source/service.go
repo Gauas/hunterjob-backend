@@ -54,7 +54,7 @@ func (s Service) Add(ctx context.Context, in CreateInput) (company.Source, error
 		in.CrawlIntervalMinutes = 360
 	}
 	now := time.Now().UTC()
-	return s.repo.CreateSource(ctx, company.Source{CompanyID: c.ID, CareerURL: in.CareerURL, Provider: in.Provider, URLPatterns: []string{"/job/", "/jobs/", "/career/", "/careers/", "/position/"}, CrawlIntervalMinutes: in.CrawlIntervalMinutes, Enabled: true, CreatedAt: now, UpdatedAt: now})
+	return s.repo.CreateSource(ctx, company.Source{CompanyID: c.ID, CareerURL: in.CareerURL, Provider: in.Provider, URLPatterns: []string{"/job/", "/jobs/", "/career/", "/careers/", "/position/"}, CrawlIntervalMinutes: in.CrawlIntervalMinutes, Enabled: true, NextCrawlAt: now, CreatedAt: now, UpdatedAt: now})
 }
 
 func (s Service) Restart(ctx context.Context) (int, error) {

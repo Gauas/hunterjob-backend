@@ -27,6 +27,9 @@ type Source struct {
 	Enabled              bool               `bson:"enabled" json:"enabled"`
 	LastContentHash      string             `bson:"last_content_hash" json:"last_content_hash"`
 	ConsecutiveFailures  int                `bson:"consecutive_failures" json:"consecutive_failures"`
+	LastCrawledAt        *time.Time         `bson:"last_crawled_at,omitempty" json:"last_crawled_at,omitempty"`
+	LastScheduledAt      *time.Time         `bson:"last_scheduled_at,omitempty" json:"last_scheduled_at,omitempty"`
+	NextCrawlAt          time.Time          `bson:"next_crawl_at" json:"next_crawl_at"`
 	CreatedAt            time.Time          `bson:"created_at" json:"created_at"`
 	UpdatedAt            time.Time          `bson:"updated_at" json:"updated_at"`
 }
