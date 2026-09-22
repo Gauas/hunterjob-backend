@@ -32,7 +32,16 @@ func main() {
 	}
 	defer client.Disconnect(context.Background())
 	r := gin.New()
-	r.Use(gin.Logger(), gin.Recovery(), func(c *gin.Context) { c.Header("X-Request-ID", uuid.NewString()); c.Next() })
+	r.Use(
+		gin.LoggerWithConfig(gin.LoggerConfig{
+			SkipPaths: []string{"/health", "/ready"},
+		}),
+		gin.Recovery(),
+		func(c *gin.Context) {
+			c.Header("X-Request-ID", uuid.NewString())
+			c.Next()
+		},
+	)
 	r.GET("/health", func(c *gin.Context) { c.JSON(200, gin.H{"status": "ok"}) })
 	r.GET("/ready", func(c *gin.Context) { c.JSON(200, gin.H{"status": "ready"}) })
 	v := r.Group("/api/v1")
