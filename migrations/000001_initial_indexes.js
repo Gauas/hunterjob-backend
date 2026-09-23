@@ -8,8 +8,12 @@ if (migrations.findOne({ _id: version })) {
   print(`Migration ${version} has already been applied.`);
 } else {
   db.getCollection("jobs").createIndex(
-    { original_url: 1 },
-    { name: "original_url_unique", unique: true },
+    { source_id: 1, source_job_id: 1 },
+    {
+      name: "source_job_id_unique",
+      unique: true,
+      partialFilterExpression: { source_job_id: { $type: "string" } },
+    },
   );
   db.getCollection("jobs").createIndex(
     { fingerprint: 1 },

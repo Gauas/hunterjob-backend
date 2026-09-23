@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -54,9 +55,16 @@ func main() {
 	if e != nil {
 		log.Fatal(e)
 	}
-	rdb := redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
+	redisOptions := &redis.Options{Addr: cfg.RedisAddr}
+	if strings.HasPrefix(cfg.RedisAddr, "redis://") || strings.HasPrefix(cfg.RedisAddr, "rediss://") {
+		redisOptions, e = redis.ParseURL(cfg.RedisAddr)
+		if e != nil {
+			log.Fatalf("invalid REDIS_ADDR: %v", e)
+		}
+	}
+	rdb := redis.NewClient(redisOptions)
 	fetcher := crawler.HTTPFetcher{Client: &http.Client{Timeout: cfg.Timeout}, UserAgent: cfg.UserAgent, MaxBody: cfg.MaxBodySize}
-	normalizer := infraai.OpenAICompatible{APIURL: cfg.AIAPIURL, APIKey: cfg.AIAPIKey}
+	normalizer := infraai.OpenAICompatible{APIURL: cfg.AIAPIURL, APIKey: cfg.AIAPIKey, Client: &http.Client{Timeout: cfg.AITimeout}}
 	service := crawler.Service{Repository: s, Fetcher: fetcher, Normalizer: normalizer}
 	publisher := infraqueue.RabbitMQ{URL: cfg.RabbitURL}
 	stop := make(chan os.Signal, 1)

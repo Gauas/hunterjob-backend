@@ -28,7 +28,11 @@ func NewMongo(ctx context.Context, uri, database string) (*MongoRepository, *mon
 
 	s := &MongoRepository{c.Database(database)}
 
-	_, e = s.DB.Collection("jobs").Indexes().CreateMany(ctx, []mongo.IndexModel{{Keys: bson.D{{Key: "original_url", Value: 1}}, Options: options.Index().SetUnique(true)}, {Keys: bson.D{{Key: "fingerprint", Value: 1}}}, {Keys: bson.D{{Key: "active", Value: 1}, {Key: "last_seen_at", Value: -1}}}})
+	_, e = s.DB.Collection("jobs").Indexes().CreateMany(ctx, []mongo.IndexModel{
+		{Keys: bson.D{{Key: "source_id", Value: 1}, {Key: "source_job_id", Value: 1}}, Options: options.Index().SetName("source_job_id_unique").SetUnique(true).SetPartialFilterExpression(bson.M{"source_job_id": bson.M{"$type": "string"}})},
+		{Keys: bson.D{{Key: "fingerprint", Value: 1}}},
+		{Keys: bson.D{{Key: "active", Value: 1}, {Key: "last_seen_at", Value: -1}}},
+	})
 	return s, c, e
 }
 
@@ -265,7 +269,11 @@ func (s *MongoRepository) UpsertJob(ctx context.Context, j job.Job) error {
 	delete(set, "_id")
 	delete(set, "first_seen_at")
 	delete(set, "created_at")
-	filter := bson.M{"$or": bson.A{bson.M{"original_url": j.OriginalURL}, bson.M{"fingerprint": j.Fingerprint}}}
+	identity := bson.M{"source_id": j.SourceID, "original_url": j.OriginalURL}
+	if j.SourceJobID != "" {
+		identity = bson.M{"source_id": j.SourceID, "source_job_id": j.SourceJobID}
+	}
+	filter := bson.M{"$or": bson.A{identity, bson.M{"fingerprint": j.Fingerprint}}}
 	_, e = s.DB.Collection("jobs").UpdateOne(ctx, filter, bson.M{"$set": set, "$setOnInsert": bson.M{"first_seen_at": j.FirstSeenAt, "created_at": j.CreatedAt}}, options.Update().SetUpsert(true))
 	return e
 }

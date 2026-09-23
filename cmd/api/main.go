@@ -45,7 +45,7 @@ func main() {
 	q := queue.RabbitMQ{URL: cfg.RabbitURL}
 	admin := controller.NewAdminController(appsource.NewService(s, q))
 	catalog := controller.NewCatalogController(s)
-	aiProvider := infraai.OpenAICompatible{APIURL: cfg.AIAPIURL, APIKey: cfg.AIAPIKey}
+	aiProvider := infraai.OpenAICompatible{APIURL: cfg.AIAPIURL, APIKey: cfg.AIAPIKey, Client: &http.Client{Timeout: cfg.AITimeout}}
 	aiSearch := controller.NewSearchController(appsearch.NewService(s, aiProvider))
 	v.GET("/jobs", catalog.ListJobs)
 	v.GET("/jobs/latest", catalog.LatestJobs)

@@ -23,6 +23,7 @@ type JobRepository interface {
 }
 
 type NormalizedJob struct {
+	SourceJobID     string         `json:"source_job_id"`
 	Title           string         `json:"title"`
 	NormalizedTitle string         `json:"normalized_title"`
 	Locations       []job.Location `json:"locations"`
@@ -55,9 +56,12 @@ func (s Service) Crawl(ctx context.Context, source company.Source) (int, error) 
 		if item.ExpiredAt != nil && !item.ExpiredAt.After(now) {
 			continue
 		}
-		originalURL, e := absoluteHTTPURL(source.CareerURL, item.OriginalURL)
-		if e != nil || strings.TrimSpace(item.Title) == "" {
+		if strings.TrimSpace(item.Title) == "" {
 			continue
+		}
+		originalURL, e := absoluteHTTPURL(source.CareerURL, item.OriginalURL)
+		if e != nil {
+			originalURL = source.CareerURL
 		}
 		applyURL, e := absoluteHTTPURL(source.CareerURL, item.ApplyURL)
 		if e != nil {
@@ -72,7 +76,7 @@ func (s Service) Crawl(ctx context.Context, source company.Source) (int, error) 
 			city = item.Locations[0].City
 		}
 		hash := fmt.Sprintf("%x", sha256.Sum256([]byte(item.Description)))
-		j := job.Job{CompanyID: source.CompanyID, SourceID: source.ID, Title: item.Title, NormalizedTitle: normalizedTitle, Locations: item.Locations, Levels: item.Levels, EmploymentType: item.EmploymentType, Experience: item.Experience, Skills: item.Skills, Description: item.Description, OriginalURL: originalURL, CanonicalURL: originalURL, ApplyURL: applyURL, ExpiredAt: item.ExpiredAt, ContentHash: hash, Fingerprint: job.Fingerprint(source.CompanyID, normalizedTitle, city)}
+		j := job.Job{CompanyID: source.CompanyID, SourceID: source.ID, SourceJobID: strings.TrimSpace(item.SourceJobID), Title: item.Title, NormalizedTitle: normalizedTitle, Locations: item.Locations, Levels: item.Levels, EmploymentType: item.EmploymentType, Experience: item.Experience, Skills: item.Skills, Description: item.Description, OriginalURL: originalURL, CanonicalURL: originalURL, ApplyURL: applyURL, ExpiredAt: item.ExpiredAt, ContentHash: hash, Fingerprint: job.Fingerprint(source.CompanyID, normalizedTitle, city)}
 		if e = s.Repository.UpsertJob(ctx, j); e != nil {
 			return stored, e
 		}

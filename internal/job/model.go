@@ -21,6 +21,7 @@ type Job struct {
 	ID              primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	CompanyID       primitive.ObjectID `bson:"company_id" json:"company_id"`
 	SourceID        primitive.ObjectID `bson:"source_id" json:"source_id"`
+	SourceJobID     string             `bson:"source_job_id,omitempty" json:"source_job_id,omitempty"`
 	Title           string             `bson:"title" json:"title"`
 	NormalizedTitle string             `bson:"normalized_title" json:"normalized_title"`
 	Locations       []Location         `bson:"locations" json:"locations"`
