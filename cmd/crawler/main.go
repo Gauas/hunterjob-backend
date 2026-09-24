@@ -96,16 +96,9 @@ func main() {
 				_ = m.Nack(false, false)
 				continue
 			}
-			var src struct {
-				ID          primitive.ObjectID `bson:"_id"`
-				CompanyID   primitive.ObjectID `bson:"company_id"`
-				CareerURL   string             `bson:"career_url"`
-				Provider    string             `bson:"provider"`
-				URLPatterns []string           `bson:"url_patterns"`
-			}
-			e = s.DB.Collection("career_sources").FindOne(ctx, bson.M{"_id": id}).Decode(&src)
-			if e == nil { // map only fields worker needs
-				source := structToSource(src)
+			var source company.Source
+			e = s.DB.Collection("career_sources").FindOne(ctx, bson.M{"_id": id}).Decode(&source)
+			if e == nil {
 				_, e = service.Crawl(ctx, source)
 			}
 			_ = rdb.Del(ctx, lock)
@@ -162,14 +155,4 @@ func scheduleDueSources(ctx context.Context, repo *repository.MongoRepository, r
 		}
 	}
 	return nil
-}
-
-func structToSource(v struct {
-	ID          primitive.ObjectID `bson:"_id"`
-	CompanyID   primitive.ObjectID `bson:"company_id"`
-	CareerURL   string             `bson:"career_url"`
-	Provider    string             `bson:"provider"`
-	URLPatterns []string           `bson:"url_patterns"`
-}) company.Source {
-	return company.Source{ID: v.ID, CompanyID: v.CompanyID, CareerURL: v.CareerURL, Provider: v.Provider, URLPatterns: v.URLPatterns}
 }

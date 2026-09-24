@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -59,12 +60,17 @@ func (s Service) Crawl(ctx context.Context, source company.Source) (int, error) 
 		if strings.TrimSpace(item.Title) == "" {
 			continue
 		}
+		sourceJobID := strings.TrimSpace(item.SourceJobID)
 		originalURL, e := absoluteHTTPURL(source.CareerURL, item.OriginalURL)
-		if e != nil {
-			originalURL = source.CareerURL
+		if configuredURL, templateErr := renderURLTemplate(source.CareerURL, source.JobURLTemplate, sourceJobID, item.Title); templateErr == nil && configuredURL != "" {
+			originalURL = configuredURL
+		} else if e != nil || sameURL(originalURL, source.CareerURL) {
+			originalURL = publicCareerURL(source)
 		}
 		applyURL, e := absoluteHTTPURL(source.CareerURL, item.ApplyURL)
-		if e != nil {
+		if configuredURL, templateErr := renderURLTemplate(source.CareerURL, source.ApplyURLTemplate, sourceJobID, item.Title); templateErr == nil && configuredURL != "" {
+			applyURL = configuredURL
+		} else if e != nil || sourceJobID != "" && sameURL(applyURL, source.CareerURL) {
 			applyURL = originalURL
 		}
 		normalizedTitle := strings.TrimSpace(item.NormalizedTitle)
@@ -76,13 +82,50 @@ func (s Service) Crawl(ctx context.Context, source company.Source) (int, error) 
 			city = item.Locations[0].City
 		}
 		hash := fmt.Sprintf("%x", sha256.Sum256([]byte(item.Description)))
-		j := job.Job{CompanyID: source.CompanyID, SourceID: source.ID, SourceJobID: strings.TrimSpace(item.SourceJobID), Title: item.Title, NormalizedTitle: normalizedTitle, Locations: item.Locations, Levels: item.Levels, EmploymentType: item.EmploymentType, Experience: item.Experience, Skills: item.Skills, Description: item.Description, OriginalURL: originalURL, CanonicalURL: originalURL, ApplyURL: applyURL, ExpiredAt: item.ExpiredAt, ContentHash: hash, Fingerprint: job.Fingerprint(source.CompanyID, normalizedTitle, city)}
+		j := job.Job{CompanyID: source.CompanyID, SourceID: source.ID, SourceJobID: sourceJobID, Title: item.Title, NormalizedTitle: normalizedTitle, Locations: item.Locations, Levels: item.Levels, EmploymentType: item.EmploymentType, Experience: item.Experience, Skills: item.Skills, Description: item.Description, OriginalURL: originalURL, CanonicalURL: originalURL, ApplyURL: applyURL, ExpiredAt: item.ExpiredAt, ContentHash: hash, Fingerprint: job.Fingerprint(source.CompanyID, normalizedTitle, city)}
 		if e = s.Repository.UpsertJob(ctx, j); e != nil {
 			return stored, e
 		}
 		stored++
 	}
 	return stored, nil
+}
+
+var nonSlugCharacters = regexp.MustCompile(`[^a-z0-9]+`)
+
+func renderURLTemplate(sourceURL, template, sourceJobID, title string) (string, error) {
+	template = strings.TrimSpace(template)
+	if template == "" || sourceJobID == "" {
+		return "", nil
+	}
+	slug := strings.Trim(nonSlugCharacters.ReplaceAllString(strings.ToLower(title), "-"), "-")
+	if len(slug) > 200 {
+		slug = strings.TrimRight(slug[:200], "-")
+	}
+	rendered := strings.NewReplacer(
+		"{id}", url.PathEscape(sourceJobID),
+		"{slug}", slug,
+		"{title}", url.PathEscape(title),
+	).Replace(template)
+	return absoluteHTTPURL(sourceURL, rendered)
+}
+
+func publicCareerURL(source company.Source) string {
+	if pageURL, err := absoluteHTTPURL(source.CareerURL, source.CareerPageURL); err == nil {
+		return pageURL
+	}
+	return source.CareerURL
+}
+
+func sameURL(left, right string) bool {
+	l, leftErr := url.Parse(left)
+	r, rightErr := url.Parse(right)
+	if leftErr != nil || rightErr != nil {
+		return false
+	}
+	l.Fragment = ""
+	r.Fragment = ""
+	return l.String() == r.String()
 }
 
 func absoluteHTTPURL(baseURL, raw string) (string, error) {

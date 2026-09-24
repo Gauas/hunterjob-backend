@@ -26,7 +26,6 @@ Each job must contain exactly these fields:
 - employment_type: string
 - experience: {min_years:integer,max_years:integer}; use 0 when unknown
 - skills: array of strings
-- description: string
 - original_url: absolute or source-relative job detail URL, or "" when absent
 - apply_url: absolute or source-relative application URL, or "" when absent
 - expired_at: RFC3339 string or null

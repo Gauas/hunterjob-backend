@@ -36,7 +36,7 @@ func NewMongo(ctx context.Context, uri, database string) (*MongoRepository, *mon
 	return s, c, e
 }
 
-func (s *MongoRepository) FindOrCreateCompany(ctx context.Context, name, website string) (company.Company, error) {
+func (s *MongoRepository) FindOrCreateCompany(ctx context.Context, name, website, logoURL string) (company.Company, error) {
 	slug := strings.ToLower(strings.TrimSpace(name))
 	slug = regexp.MustCompile(`[^a-z0-9]+`).ReplaceAllString(slug, "-")
 	slug = strings.Trim(slug, "-")
@@ -45,7 +45,16 @@ func (s *MongoRepository) FindOrCreateCompany(ctx context.Context, name, website
 
 	e := s.DB.Collection("companies").FindOne(ctx, bson.M{"slug": slug}).Decode(&c)
 	if e == nil {
-		return c, nil
+		if logoURL != "" && logoURL != c.LogoURL {
+			now := time.Now().UTC()
+			e = s.DB.Collection("companies").FindOneAndUpdate(
+				ctx,
+				bson.M{"_id": c.ID},
+				bson.M{"$set": bson.M{"logo_url": logoURL, "updated_at": now}},
+				options.FindOneAndUpdate().SetReturnDocument(options.After),
+			).Decode(&c)
+		}
+		return c, e
 	}
 
 	if e != mongo.ErrNoDocuments {
@@ -53,7 +62,7 @@ func (s *MongoRepository) FindOrCreateCompany(ctx context.Context, name, website
 	}
 
 	now := time.Now().UTC()
-	c = company.Company{Name: name, Slug: slug, Website: website, CreatedAt: now, UpdatedAt: now}
+	c = company.Company{Name: name, Slug: slug, Website: website, LogoURL: logoURL, CreatedAt: now, UpdatedAt: now}
 	r, e := s.DB.Collection("companies").InsertOne(ctx, c)
 
 	if e == nil {
@@ -67,7 +76,23 @@ func (s *MongoRepository) CreateSource(ctx context.Context, source company.Sourc
 	existing := company.Source{}
 	e := s.DB.Collection("career_sources").FindOne(ctx, bson.M{"career_url": source.CareerURL}).Decode(&existing)
 	if e == nil {
-		return existing, nil
+		update := bson.M{"$set": bson.M{
+			"company_id":             source.CompanyID,
+			"provider":               source.Provider,
+			"career_page_url":        source.CareerPageURL,
+			"job_url_template":       source.JobURLTemplate,
+			"apply_url_template":     source.ApplyURLTemplate,
+			"crawl_interval_minutes": source.CrawlIntervalMinutes,
+			"enabled":                source.Enabled,
+			"updated_at":             source.UpdatedAt,
+		}}
+		e = s.DB.Collection("career_sources").FindOneAndUpdate(
+			ctx,
+			bson.M{"_id": existing.ID},
+			update,
+			options.FindOneAndUpdate().SetReturnDocument(options.After),
+		).Decode(&existing)
+		return existing, e
 	}
 
 	if e != mongo.ErrNoDocuments {
