@@ -15,8 +15,12 @@ func NewAdminController(s source.Service) AdminController { return AdminControll
 type addSourceRequest struct {
 	CompanyName          string `json:"company_name" binding:"required"`
 	CompanyWebsite       string `json:"company_website"`
+	CompanyLogoURL       string `json:"company_logo_url"`
 	CareerURL            string `json:"career_url" binding:"required"`
+	CareerPageURL        string `json:"career_page_url"`
 	Provider             string `json:"provider"`
+	JobURLTemplate       string `json:"job_url_template"`
+	ApplyURLTemplate     string `json:"apply_url_template"`
 	CrawlIntervalMinutes int    `json:"crawl_interval_minutes"`
 }
 
@@ -26,7 +30,7 @@ func (h AdminController) AddSource(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
 	}
-	src, e := h.sources.Add(c, source.CreateInput{CompanyName: req.CompanyName, CompanyWebsite: req.CompanyWebsite, CareerURL: req.CareerURL, Provider: req.Provider, CrawlIntervalMinutes: req.CrawlIntervalMinutes})
+	src, e := h.sources.Add(c, source.CreateInput{CompanyName: req.CompanyName, CompanyWebsite: req.CompanyWebsite, CompanyLogoURL: req.CompanyLogoURL, CareerURL: req.CareerURL, CareerPageURL: req.CareerPageURL, Provider: req.Provider, JobURLTemplate: req.JobURLTemplate, ApplyURLTemplate: req.ApplyURLTemplate, CrawlIntervalMinutes: req.CrawlIntervalMinutes})
 	if e != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": e.Error()})
 		return

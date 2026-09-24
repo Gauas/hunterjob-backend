@@ -21,7 +21,10 @@ type Source struct {
 	ID                   primitive.ObjectID `bson:"_id,omitempty" json:"id"`
 	CompanyID            primitive.ObjectID `bson:"company_id" json:"company_id"`
 	CareerURL            string             `bson:"career_url" json:"career_url"`
+	CareerPageURL        string             `bson:"career_page_url,omitempty" json:"career_page_url,omitempty"`
 	Provider             string             `bson:"provider" json:"provider"`
+	JobURLTemplate       string             `bson:"job_url_template,omitempty" json:"job_url_template,omitempty"`
+	ApplyURLTemplate     string             `bson:"apply_url_template,omitempty" json:"apply_url_template,omitempty"`
 	URLPatterns          []string           `bson:"url_patterns" json:"url_patterns"`
 	CrawlIntervalMinutes int                `bson:"crawl_interval_minutes" json:"crawl_interval_minutes"`
 	Enabled              bool               `bson:"enabled" json:"enabled"`
