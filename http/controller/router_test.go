@@ -27,7 +27,7 @@ func TestHealthAndReadiness(t *testing.T) {
 			for _, check := range []struct {
 				path string
 				want int
-			}{{"/v1/hunterjob/health", http.StatusOK}, {"/v1/hunterjob/ready", tc.want}, {"/v1/hunterjob/dashboard", http.StatusUnauthorized}} {
+			}{{"/v1/hunterjob/health", http.StatusOK}, {"/v1/hunterjob/ready", tc.want}, {"/v1/hunterjob/dashboard", http.StatusServiceUnavailable}} {
 				w := httptest.NewRecorder()
 				router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, check.path, nil))
 				if w.Code != check.want {

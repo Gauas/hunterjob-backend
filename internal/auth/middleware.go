@@ -1,32 +1,45 @@
 package auth
 
 import (
+	"errors"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
+	"github.com/hunterjob/hunterjob/api/pkg/authn"
 )
 
-const userKey = "hunterjob_user_id"
+// Middleware authenticates application requests locally using cached JWKS.
+type Middleware struct{ Verifier *authn.Verifier }
 
-// Require consumes identity headers set by Traefik ForwardAuth. The API must only
-// be reachable through that gateway; client-supplied identity headers are unsafe.
-type Middleware struct{}
-
-func (Middleware) Require() gin.HandlerFunc {
+func (m Middleware) Require() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		rawKey := strings.TrimSpace(c.GetHeader("X-Gauas-User-Key"))
-		deviceID := strings.TrimSpace(c.GetHeader("X-Gauas-Device-ID"))
-		sessionID := strings.TrimSpace(c.GetHeader("X-Gauas-Session-ID"))
-		id, err := uuid.Parse(rawKey)
-		if err != nil || id == uuid.Nil || deviceID == "" || sessionID == "" || strings.ContainsAny(deviceID+sessionID, "\r\n") {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "trusted identity headers are required"})
+		if m.Verifier == nil {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "authentication is unavailable"})
 			return
 		}
-		c.Set(userKey, id.String())
+		raw, err := authn.Bearer(c.GetHeader("Authorization"))
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "bearer token is required"})
+			return
+		}
+		identity, err := m.Verifier.Verify(c.Request.Context(), raw)
+		if err != nil {
+			if errors.Is(err, authn.ErrJWKSUnavailable) {
+				c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "authentication keys are unavailable"})
+				return
+			}
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid access token"})
+			return
+		}
+		c.Request = c.Request.WithContext(authn.WithIdentity(c.Request.Context(), identity))
 		c.Next()
 	}
 }
 
-func UserID(c *gin.Context) string { return c.GetString(userKey) }
+func UserID(c *gin.Context) string {
+	identity, ok := authn.FromContext(c.Request.Context())
+	if !ok {
+		return ""
+	}
+	return identity.UserID
+}
