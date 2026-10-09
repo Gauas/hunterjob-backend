@@ -44,12 +44,12 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/hunterjob-api:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/hunterjob-api:${{ steps.version.outputs.VERSION }}
 
-      - name: Build and push crawler worker image
+      - name: Build and push matcher worker image
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: Dockerfile.worker
+          file: Dockerfile.matcher
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/hunterjob-crawler:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/hunterjob-crawler:${{ steps.version.outputs.VERSION }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/hunterjob-matcher:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/hunterjob-matcher:${{ steps.version.outputs.VERSION }}
