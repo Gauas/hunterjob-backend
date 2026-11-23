@@ -6,9 +6,11 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
+	"github.com/hunterjob/hunterjob/api/internal/geography"
 	"github.com/hunterjob/hunterjob/api/model"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -28,7 +30,10 @@ func (s Store) ProcessJob(ctx context.Context, item model.LakeJob) (int, error) 
 			item.CompanyLogoURL = ""
 		}
 	}
-	filter := bson.M{"enabled": true, "locations": bson.M{"$regex": "^" + regexpEscape(item.Location) + "$", "$options": "i"}}
+	filter := bson.M{"enabled": true}
+	if !geography.IsHoChiMinh(item.Location) && !strings.Contains(strings.ToLower(item.Location), "remote") {
+		filter["locations"] = bson.M{"$regex": "^" + regexp.QuoteMeta(strings.TrimSpace(item.Location)) + "$", "$options": "i"}
+	}
 	cur, err := s.DB.Collection("search_preferences").Find(ctx, filter)
 	if err != nil {
 		return 0, err
@@ -75,14 +80,4 @@ func dedupeKey(item model.LakeJob) string {
 	}
 	hash := sha256.Sum256([]byte(strings.ToLower(strings.TrimSpace(identity))))
 	return hex.EncodeToString(hash[:])
-}
-func regexpEscape(value string) string {
-	var b strings.Builder
-	for _, r := range value {
-		if strings.ContainsRune(`\.+*?()|[]{}^$`, r) {
-			b.WriteByte('\\')
-		}
-		b.WriteRune(r)
-	}
-	return b.String()
 }
