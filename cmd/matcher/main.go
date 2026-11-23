@@ -3,15 +3,14 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/hunterjob/hunterjob/api/entity"
 	"github.com/hunterjob/hunterjob/api/infra"
-	"github.com/hunterjob/hunterjob/api/internal/agent"
 	"github.com/hunterjob/hunterjob/api/internal/config"
 	"github.com/hunterjob/hunterjob/api/repository"
 	"github.com/hunterjob/hunterjob/api/service"
@@ -33,16 +32,29 @@ func run(ctx context.Context, cfg config.Config) error {
 	}
 	defer resources.Close()
 	store := repository.Store{DB: resources.Database}
-	conn, err := amqp.Dial(cfg.RabbitURL)
+	matcher := service.Matcher{Store: store}
+	for ctx.Err() == nil {
+		if err := consume(ctx, cfg.RabbitURL, matcher); err != nil && ctx.Err() == nil {
+			log.Printf("matcher retrying in 5 seconds: %v", err)
+			select {
+			case <-ctx.Done():
+			case <-time.After(5 * time.Second):
+			}
+		}
+	}
+	return nil
+}
+
+func consume(ctx context.Context, rabbitURL string, matcher service.Matcher) error {
+	conn, err := amqp.DialConfig(rabbitURL, amqp.Config{Dial: amqp.DefaultDial(10 * time.Second)})
 	if err != nil {
 		return fmt.Errorf("connect rabbitmq: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.CloseDeadline(time.Now().Add(5 * time.Second)) }()
 	ch, err := conn.Channel()
 	if err != nil {
 		return fmt.Errorf("open rabbitmq channel: %w", err)
 	}
-	defer ch.Close()
 	if _, err := ch.QueueDeclare("job.new", true, false, false, false, amqp.Table{"x-dead-letter-exchange": "", "x-dead-letter-routing-key": "job.new.dead"}); err != nil {
 		return err
 	}
@@ -56,27 +68,27 @@ func run(ctx context.Context, cfg config.Config) error {
 	if err != nil {
 		return err
 	}
-	telegram := &agent.TelegramProvider{BotUsername: cfg.TelegramBotUsername, BotToken: cfg.TelegramBotToken, WebhookSecret: cfg.TelegramWebhookSecret, Redis: resources.Cache, Store: store}
-	go service.DailyLoop(ctx, store, telegram, resources.Cache)
-	matcher := service.Matcher{Store: store}
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case message, ok := <-messages:
 			if !ok {
-				return errors.New("job.new consumer closed")
+				return fmt.Errorf("job.new consumer closed")
 			}
 			var job entity.LakeJob
 			if json.Unmarshal(message.Body, &job) != nil || job.ID == "" {
-				_ = message.Nack(false, false)
+				if err := message.Nack(false, false); err != nil {
+					return fmt.Errorf("dead-letter malformed job: %w", err)
+				}
 				continue
 			}
 			if _, err := matcher.ProcessJob(ctx, job); err != nil {
-				log.Printf("match job %s: %v", job.ID, err)
-				_ = message.Nack(false, true)
-			} else {
-				_ = message.Ack(false)
+				// Closing the channel requeues the unacknowledged event after a backoff.
+				return fmt.Errorf("match job %s: %w", job.ID, err)
+			}
+			if err := message.Ack(false); err != nil {
+				return fmt.Errorf("acknowledge job %s: %w", job.ID, err)
 			}
 		}
 	}

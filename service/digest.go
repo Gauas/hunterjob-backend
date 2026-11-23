@@ -2,22 +2,28 @@ package service
 
 import (
 	"context"
-	"github.com/go-redis/redis/v8"
-	"github.com/hunterjob/hunterjob/api/entity"
-	"github.com/hunterjob/hunterjob/api/internal/agent"
-	"github.com/hunterjob/hunterjob/api/repository"
-
+	"hash/fnv"
 	"log"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
+
+	"github.com/hunterjob/hunterjob/api/entity"
+	"github.com/hunterjob/hunterjob/api/internal/agent"
+	"github.com/hunterjob/hunterjob/api/repository"
 )
 
-func DailyLoop(ctx context.Context, store repository.Store, telegram *agent.TelegramProvider, cache *redis.Client) {
-	ticker := time.NewTicker(10 * time.Minute)
+type Digest struct {
+	Store    repository.Store
+	Telegram *agent.TelegramProvider
+}
+
+func (d Digest) Run(ctx context.Context) {
+	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
-	for {
-		deliverDaily(ctx, store, telegram, cache)
+	for ctx.Err() == nil {
+		d.deliverDaily(ctx, time.Now())
 		select {
 		case <-ctx.Done():
 			return
@@ -25,79 +31,86 @@ func DailyLoop(ctx context.Context, store repository.Store, telegram *agent.Tele
 		}
 	}
 }
-func deliverDaily(ctx context.Context, store repository.Store, telegram *agent.TelegramProvider, cache *redis.Client) {
-	if !telegram.Available() {
+
+func (d Digest) deliverDaily(ctx context.Context, now time.Time) {
+	if !d.Telegram.Available() {
 		return
 	}
-	// Each user gets a stable slot across the 07:00–09:00 UTC+7 delivery window.
-	now := time.Now().In(time.FixedZone("ICT", 7*3600))
+	// Vietnam uses UTC+7. Start each user in a stable ten-minute slot.
+	now = now.In(time.FixedZone("ICT", 7*3600))
 	if now.Hour() < 7 || now.Hour() >= 9 {
 		return
 	}
-	connections, err := store.ConnectedTelegram(ctx)
+	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	connections, err := d.Store.PendingTelegram(ctx, dayStart)
 	if err != nil {
 		log.Printf("daily connections: %v", err)
 		return
 	}
 	for _, connection := range connections {
-		slot := int(hash(connection.UserID) % 12)
-		if (now.Hour()-7)*6+now.Minute()/10 != slot {
+		slot := dailySlot(connection.UserID)
+		if (now.Hour()-7)*6+now.Minute()/10 < slot || ctx.Err() != nil {
 			continue
 		}
-		lock := "digest:" + now.Format("2006-01-02") + ":" + connection.UserID
-		ok, err := cache.SetNX(ctx, lock, "1", 24*time.Hour).Result()
-		if err != nil || !ok {
-			continue
-		}
-		matches, err := store.Undelivered(ctx, connection.UserID)
-		if err != nil || len(matches) == 0 {
-			_ = cache.Del(ctx, lock).Err()
-			continue
-		}
-		message := formatDigest(matches)
-		err = telegram.Send(ctx, connection.ExternalUserID, message)
-		status := "sent"
-		if err != nil {
-			status = "failed"
-			_ = cache.Del(ctx, lock).Err()
-			log.Printf("digest %s: %v", connection.UserID, err)
-		}
-		ids := make([]string, len(matches))
-		for i, match := range matches {
-			ids[i] = match.ID
-		}
-		delivery := entity.NotificationDelivery{UserID: connection.UserID, Provider: "telegram", MatchIDs: ids, Status: status, Attempts: 1, CreatedAt: time.Now().UTC()}
-		if err == nil {
-			sent := time.Now().UTC()
-			delivery.SentAt = &sent
-		} else {
-			delivery.Error = err.Error()
-		}
-		if recordErr := store.RecordDelivery(ctx, delivery); recordErr != nil {
-			log.Printf("record digest %s: %v", connection.UserID, recordErr)
+		err := d.Store.DeliverDigest(ctx, connection, dayStart, func(matches []entity.Match) (int, error) {
+			message, count := formatDigest(matches)
+			sendCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
+			return count, d.Telegram.Send(sendCtx, connection.ExternalUserID, message)
+		})
+		if err != nil && ctx.Err() == nil {
+			log.Printf("daily digest for %s: %v", connection.UserID, err)
 		}
 	}
 }
-func formatDigest(matches []entity.Match) string {
-	var b strings.Builder
-	b.WriteString("New jobs matched for you\n\n")
+
+func formatDigest(matches []entity.Match) (string, int) {
+	const telegramLimit = 4096
+	const header = "New jobs matched for you\n"
+	var message strings.Builder
+	message.WriteString(header)
+	remaining := telegramLimit - len(header)
 	for i, item := range matches {
-		experience := "Experience not specified"
-		if item.Job.ExperienceMin != nil {
-			experience = strconv.Itoa(*item.Job.ExperienceMin) + "+ years"
-			if item.Job.ExperienceMax != nil {
-				experience = strconv.Itoa(*item.Job.ExperienceMin) + "–" + strconv.Itoa(*item.Job.ExperienceMax) + " years"
-			}
+		title := excerpt(item.Job.Title, 200)
+		company := excerpt(item.Job.CompanyName, 100)
+		link := item.Job.JobURL
+		if utf8.RuneCountInString(link) > 3000 {
+			link = "Open your HunterJob dashboard to view this posting."
 		}
-		b.WriteString(strings.Join([]string{strconv.Itoa(i+1) + ". " + item.Job.Title, item.Job.CompanyName, experience, item.Job.JobURL, ""}, "\n"))
+		row := strings.Join([]string{"", strconv.Itoa(i+1) + ". " + title, company, experienceLabel(item.Job), link, ""}, "\n")
+		size := utf8.RuneCountInString(row)
+		if size > remaining {
+			return message.String(), i
+		}
+		message.WriteString(row)
+		remaining -= size
 	}
-	return b.String()
+	return message.String(), len(matches)
 }
-func hash(value string) uint32 {
-	var result uint32 = 2166136261
-	for _, c := range []byte(value) {
-		result ^= uint32(c)
-		result *= 16777619
+
+func experienceLabel(job entity.JobSnapshot) string {
+	switch {
+	case job.ExperienceMin != nil && job.ExperienceMax != nil:
+		return strconv.Itoa(*job.ExperienceMin) + "–" + strconv.Itoa(*job.ExperienceMax) + " years"
+	case job.ExperienceMin != nil:
+		return strconv.Itoa(*job.ExperienceMin) + "+ years"
+	case job.ExperienceMax != nil:
+		return "Up to " + strconv.Itoa(*job.ExperienceMax) + " years"
+	default:
+		return "Experience not specified"
 	}
-	return result
+}
+
+func excerpt(value string, limit int) string {
+	runes := []rune(value)
+	if len(runes) > limit {
+		return string(runes[:limit-1]) + "…"
+	}
+	return value
+}
+
+func dailySlot(userID string) int {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(userID))
+	return int(h.Sum32() % 12)
 }
