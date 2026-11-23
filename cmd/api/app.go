@@ -10,6 +10,7 @@ import (
 	"github.com/hunterjob/hunterjob/api/internal/agent"
 	"github.com/hunterjob/hunterjob/api/internal/auth"
 	"github.com/hunterjob/hunterjob/api/internal/config"
+	"github.com/hunterjob/hunterjob/api/pkg/authn"
 	"github.com/hunterjob/hunterjob/api/repository"
 )
 
@@ -31,10 +32,14 @@ func NewApplication(ctx context.Context, cfg config.Config) (*Application, error
 		return nil, errors.Join(err, resources.Close())
 	}
 	telegram := &agent.TelegramProvider{BotUsername: cfg.TelegramBotUsername, BotToken: cfg.TelegramBotToken, WebhookSecret: cfg.TelegramWebhookSecret, Redis: resources.Cache, Store: store}
+	verifier, err := authn.NewVerifier(authn.Config{JWKSURL: cfg.JWKSURL, Issuer: cfg.JWTIssuer, Audience: cfg.JWTAudience})
+	if err != nil {
+		return nil, errors.Join(err, resources.Close())
+	}
 	ctrl := controller.Controller{
 		Agent:    controller.Handler{Store: store, Providers: agent.ProviderRegistry{Telegram: telegram}},
 		Telegram: telegram,
-		Auth:     auth.Middleware{},
+		Auth:     auth.Middleware{Verifier: verifier},
 		Ready:    resources.Ready,
 	}
 	return &Application{server: transport.NewServer(cfg.Port, ctrl), resources: resources}, nil
