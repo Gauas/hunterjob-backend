@@ -9,11 +9,10 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/hunterjob/hunterjob/api/entity"
 	"github.com/hunterjob/hunterjob/api/internal/agent"
 	"github.com/hunterjob/hunterjob/api/internal/auth"
-	"github.com/hunterjob/hunterjob/api/model"
 	"github.com/hunterjob/hunterjob/api/repository"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type Handler struct {
@@ -45,12 +44,12 @@ func (h Handler) PutPreference(c *gin.Context) {
 		return
 	}
 	input.Role = strings.TrimSpace(input.Role)
-	exp, ok := model.NormalizeExperience(input.Experience)
+	exp, ok := entity.NormalizeExperience(input.Experience)
 	if input.Role == "" || len(input.Role) > 120 || !ok {
 		bad(c, "role and valid experience are required")
 		return
 	}
-	locations := model.CleanStrings(input.Locations)
+	locations := entity.CleanStrings(input.Locations)
 	if len(locations) == 0 {
 		bad(c, "at least one location is required")
 		return
@@ -67,7 +66,7 @@ func (h Handler) PutPreference(c *gin.Context) {
 		bad(c, "frequency must be daily")
 		return
 	}
-	p, err := h.Store.SavePreference(c, model.Preference{UserID: auth.UserID(c), Role: input.Role, Experience: exp, Locations: locations, Keywords: model.CleanStrings(input.Keywords), ExcludedKeywords: model.CleanStrings(input.ExcludedKeywords), Frequency: frequency})
+	p, err := h.Store.SavePreference(c, entity.Preference{UserID: auth.UserID(c), Role: input.Role, Experience: exp, Locations: locations, Keywords: entity.CleanStrings(input.Keywords), ExcludedKeywords: entity.CleanStrings(input.ExcludedKeywords), Frequency: frequency})
 	if err != nil {
 		serverError(c)
 		return
@@ -95,14 +94,14 @@ func (h Handler) Dashboard(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"search_preference": p, "recent_jobs": matches, "connections": connections})
 }
 
-func encodeCursor(m model.Match) string {
+func encodeCursor(m entity.Match) string {
 	b, _ := json.Marshal(struct {
 		Time time.Time `json:"t"`
 		ID   string    `json:"i"`
-	}{m.MatchedAt, m.ID.Hex()})
+	}{m.MatchedAt, m.ID})
 	return base64.RawURLEncoding.EncodeToString(b)
 }
-func decodeCursor(value string) (*model.Match, error) {
+func decodeCursor(value string) (*entity.Match, error) {
 	b, err := base64.RawURLEncoding.DecodeString(value)
 	if err != nil {
 		return nil, err
@@ -114,11 +113,11 @@ func decodeCursor(value string) (*model.Match, error) {
 	if err = json.Unmarshal(b, &data); err != nil {
 		return nil, err
 	}
-	id, err := primitive.ObjectIDFromHex(data.ID)
+	id, err := entity.ParseID(data.ID)
 	if err != nil || data.Time.IsZero() {
 		return nil, strconv.ErrSyntax
 	}
-	return &model.Match{ID: id, MatchedAt: data.Time}, nil
+	return &entity.Match{ID: id, MatchedAt: data.Time}, nil
 }
 func (h Handler) ListMatches(c *gin.Context) {
 	limit := int64(20)
@@ -139,7 +138,7 @@ func (h Handler) ListMatches(c *gin.Context) {
 		bad(c, "invalid match_level")
 		return
 	}
-	var before *model.Match
+	var before *entity.Match
 	if cursor := c.Query("cursor"); cursor != "" {
 		var err error
 		before, err = decodeCursor(cursor)
@@ -161,7 +160,7 @@ func (h Handler) ListMatches(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": items, "next_cursor": next})
 }
 func (h Handler) GetMatch(c *gin.Context) {
-	id, err := primitive.ObjectIDFromHex(c.Param("id"))
+	id, err := entity.ParseID(c.Param("id"))
 	if err != nil {
 		bad(c, "invalid match id")
 		return
@@ -178,7 +177,7 @@ func (h Handler) GetMatch(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": m})
 }
 func (h Handler) PatchMatchStatus(c *gin.Context) {
-	id, err := primitive.ObjectIDFromHex(c.Param("id"))
+	id, err := entity.ParseID(c.Param("id"))
 	if err != nil {
 		bad(c, "invalid match id")
 		return
@@ -213,19 +212,19 @@ func serverError(c *gin.Context) {
 	c.JSON(http.StatusInternalServerError, gin.H{"error": "request could not be completed"})
 }
 
-func (h Handler) connectionViews(c *gin.Context, user string) ([]model.ConnectionView, error) {
+func (h Handler) connectionViews(c *gin.Context, user string) ([]entity.ConnectionView, error) {
 	items, err := h.Store.Connections(c, user)
 	if err != nil {
 		return nil, err
 	}
-	byProvider := map[string]model.Connection{}
+	byProvider := map[string]entity.Connection{}
 	for _, item := range items {
 		byProvider[item.Provider] = item
 	}
-	views := make([]model.ConnectionView, 0, len(model.Providers))
-	for _, name := range model.Providers {
+	views := make([]entity.ConnectionView, 0, len(entity.Providers))
+	for _, name := range entity.Providers {
 		item := byProvider[name]
-		views = append(views, model.ConnectionView{Provider: name, Available: h.Providers.Available(name), Connected: item.Status == "connected", Enabled: item.Enabled})
+		views = append(views, entity.ConnectionView{Provider: name, Available: h.Providers.Available(name), Connected: item.Status == "connected", Enabled: item.Enabled})
 	}
 	return views, nil
 }
@@ -291,5 +290,5 @@ func (h Handler) PatchConnection(c *gin.Context) {
 		serverError(c)
 		return
 	}
-	c.JSON(http.StatusOK, model.ConnectionView{Provider: provider, Available: true, Connected: true, Enabled: item.Enabled})
+	c.JSON(http.StatusOK, entity.ConnectionView{Provider: provider, Available: true, Connected: true, Enabled: item.Enabled})
 }
