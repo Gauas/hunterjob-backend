@@ -17,3 +17,14 @@ From the dashboard, open the Page and send the one-time link command.
 Send `/jobs` in that chat to receive the latest matches on demand. Messages
 are replies to incoming user requests in the standard messaging window.
 [Meta Messenger Platform](https://developers.facebook.com/docs/messenger-platform/)
+
+## Zalo
+
+Set `ZALO_OA_ID`, `ZALO_ACCESS_TOKEN` and `ZALO_WEBHOOK_SECRET` on the API.
+Register `POST /v1/hunterjob/webhooks/zalo` for the `user_send_text` event
+and supply the OA webhook secret. Keep the OA access token current via your
+Zalo credential rotation process.
+
+Open the OA from the dashboard and send the one-time `#link` command.
+Send `#jobs` to request the latest matches as an OA consultation reply.
+[Zalo OA consultation messaging](https://oa.zalo.me/home/documents/guides/tin-tu-van)

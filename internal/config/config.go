@@ -7,6 +7,7 @@ import (
 )
 
 type Config struct {
+	ZaloOAID, ZaloAccessToken, ZaloWebhookSecret                                  string
 	MessengerPageID, MessengerPageToken, MessengerAppSecret, MessengerVerifyToken string
 	Port, DatabaseURL, RabbitURL                                                  string
 	JWKSURL, JWTIssuer, JWTAudience                                               string
@@ -15,6 +16,9 @@ type Config struct {
 
 func Load() Config {
 	return Config{
+		ZaloOAID:              os.Getenv("ZALO_OA_ID"),
+		ZaloAccessToken:       os.Getenv("ZALO_ACCESS_TOKEN"),
+		ZaloWebhookSecret:     os.Getenv("ZALO_WEBHOOK_SECRET"),
 		MessengerPageID:       os.Getenv("MESSENGER_PAGE_ID"),
 		MessengerPageToken:    os.Getenv("MESSENGER_PAGE_TOKEN"),
 		MessengerAppSecret:    os.Getenv("MESSENGER_APP_SECRET"),

@@ -40,6 +40,11 @@ func NewApplication(ctx context.Context, cfg config.Config) (*Application, error
 		providers["messenger"] = messenger
 		webhooks["messenger"] = controller.Webhook{Verify: messenger.Verify, Receive: messenger.Webhook}
 	}
+	zalo := agent.NewZalo(store, cfg.ZaloOAID, cfg.ZaloAccessToken, cfg.ZaloWebhookSecret)
+	if zalo != nil {
+		providers["zalo"] = zalo
+		webhooks["zalo"] = controller.Webhook{Receive: zalo.Webhook}
+	}
 	verifier, err := authn.NewVerifier(authn.Config{JWKSURL: cfg.JWKSURL, Issuer: cfg.JWTIssuer, Audience: cfg.JWTAudience})
 	if err != nil {
 		return nil, errors.Join(err, resources.Close())
