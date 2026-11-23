@@ -9,6 +9,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/rabbitmq/amqp091-go v1.10.0
+	go.mongodb.org/mongo-driver v1.17.6
 	golang.org/x/net v0.42.0
 	golang.org/x/text v0.27.0
 )
