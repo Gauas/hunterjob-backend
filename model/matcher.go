@@ -2,28 +2,12 @@ package model
 
 import (
 	"strings"
-	"time"
+
+	"github.com/hunterjob/hunterjob/api/internal/geography"
+	"github.com/hunterjob/hunterjob/api/internal/jobevent"
 )
 
-// LakeJob is the normalized job.new event contract owned by Job Lake.
-type LakeJob struct {
-	ID             string     `json:"id"`
-	ExternalID     string     `json:"external_id"`
-	Source         string     `json:"source"`
-	Title          string     `json:"title"`
-	CompanyName    string     `json:"company_name"`
-	CompanyLogoURL string     `json:"company_logo_url"`
-	Location       string     `json:"location"`
-	EmploymentType string     `json:"employment_type"`
-	ExperienceMin  *int       `json:"experience_min"`
-	ExperienceMax  *int       `json:"experience_max"`
-	Skills         []string   `json:"skills"`
-	Description    string     `json:"description"`
-	JobURL         string     `json:"job_url"`
-	PublishedAt    *time.Time `json:"published_at"`
-	DiscoveredAt   time.Time  `json:"discovered_at"`
-	Status         string     `json:"status"`
-}
+type LakeJob = jobevent.Job
 
 func containsWord(text, word string) bool {
 	return strings.Contains(strings.ToLower(text), strings.ToLower(strings.TrimSpace(word)))
@@ -34,7 +18,9 @@ func Evaluate(job LakeJob, p Preference) (string, []string, bool) {
 	}
 	location := false
 	for _, wanted := range p.Locations {
-		if strings.EqualFold(strings.TrimSpace(job.Location), wanted) || strings.EqualFold(wanted, "remote") && containsWord(job.Location, "remote") {
+		if strings.EqualFold(strings.TrimSpace(job.Location), wanted) ||
+			geography.IsHoChiMinh(job.Location) && geography.IsHoChiMinh(wanted) ||
+			strings.EqualFold(wanted, "remote") && containsWord(job.Location, "remote") {
 			location = true
 			break
 		}
