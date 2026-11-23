@@ -6,7 +6,6 @@ import (
 
 	"github.com/hunterjob/hunterjob/api/entity"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -103,23 +102,4 @@ func (s Store) SetMatchStatus(ctx context.Context, userID, id, status string) (*
 func (s Store) Connections(ctx context.Context, userID string) ([]entity.Connection, error) {
 	rows, err := s.DB.Query(ctx, "SELECT "+connectionColumns+" FROM chat_connections WHERE user_id = $1", userID)
 	return collect(rows, err, scanConnection)
-}
-
-func (s Store) Connection(ctx context.Context, userID, provider string) (*entity.Connection, error) {
-	rows, err := s.DB.Query(ctx, "SELECT "+connectionColumns+" FROM chat_connections WHERE user_id = $1 AND provider = $2", userID, provider)
-	return one(rows, err, scanConnection)
-}
-
-func (s Store) SaveConnection(ctx context.Context, item entity.Connection) error {
-	_, err := s.DB.Exec(ctx, `
-		INSERT INTO chat_connections (user_id, provider, status, enabled, external_user_id)
-		VALUES ($1, $2, $3, $4, $5)
-		ON CONFLICT (user_id, provider) DO UPDATE SET status = EXCLUDED.status,
-			enabled = EXCLUDED.enabled, external_user_id = EXCLUDED.external_user_id, updated_at = now()`,
-		item.UserID, item.Provider, item.Status, item.Enabled, item.ExternalUserID)
-	var dbErr *pgconn.PgError
-	if errors.As(err, &dbErr) && dbErr.ConstraintName == "chat_connections_recipient" {
-		return ErrRecipientInUse
-	}
-	return err
 }

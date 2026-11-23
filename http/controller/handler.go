@@ -276,19 +276,14 @@ func (h Handler) PatchConnection(c *gin.Context) {
 		bad(c, "enabled is required")
 		return
 	}
-	item, err := h.Store.Connection(c, auth.UserID(c), provider)
+	updated, err := h.Store.EnableConnection(c, auth.UserID(c), provider, *input.Enabled)
 	if err != nil {
 		serverError(c)
 		return
 	}
-	if item == nil || item.Status != "connected" {
+	if !updated {
 		c.JSON(http.StatusConflict, gin.H{"error": "connect provider first"})
 		return
 	}
-	item.Enabled = *input.Enabled
-	if err := h.Store.SaveConnection(c, *item); err != nil {
-		serverError(c)
-		return
-	}
-	c.JSON(http.StatusOK, entity.ConnectionView{Provider: provider, Available: true, Connected: true, Enabled: item.Enabled})
+	c.JSON(http.StatusOK, entity.ConnectionView{Provider: provider, Available: true, Connected: true, Enabled: *input.Enabled})
 }
