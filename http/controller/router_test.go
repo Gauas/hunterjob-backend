@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/hunterjob/hunterjob/api/internal/agent"
 )
 
 func TestHealthAndReadiness(t *testing.T) {
@@ -23,7 +22,7 @@ func TestHealthAndReadiness(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			router := gin.New()
-			Controller{Telegram: &agent.TelegramProvider{}, Ready: tc.ready}.Register(router)
+			Controller{Ready: tc.ready}.Register(router)
 			for _, check := range []struct {
 				path string
 				want int
