@@ -16,9 +16,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
-	"github.com/hunterjob/hunterjob/api/model"
+	"github.com/hunterjob/hunterjob/api/entity"
 	"github.com/hunterjob/hunterjob/api/repository"
-	"go.mongodb.org/mongo-driver/mongo"
 )
 
 type ConnectionResult struct {
@@ -130,9 +129,9 @@ func (t *TelegramProvider) Webhook(c *gin.Context) {
 		c.Status(http.StatusServiceUnavailable)
 		return
 	}
-	item := model.Connection{UserID: userID, Provider: "telegram", Status: "connected", Enabled: true, ExternalUserID: strconv.FormatInt(update.Message.Chat.ID, 10)}
+	item := entity.Connection{UserID: userID, Provider: "telegram", Status: "connected", Enabled: true, ExternalUserID: strconv.FormatInt(update.Message.Chat.ID, 10)}
 	if err := t.Store.SaveConnection(c, item); err != nil {
-		if mongo.IsDuplicateKeyError(err) {
+		if errors.Is(err, repository.ErrRecipientInUse) {
 			_ = t.Redis.Del(c, key).Err()
 			_ = t.Send(c, item.ExternalUserID, "This Telegram chat is already linked to another HunterJob account. Disconnect it there before trying again.")
 			c.Status(http.StatusOK)

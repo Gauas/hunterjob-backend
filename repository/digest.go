@@ -3,39 +3,39 @@ package repository
 import (
 	"context"
 
-	"github.com/hunterjob/hunterjob/api/model"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo/options"
-	"time"
+	"github.com/hunterjob/hunterjob/api/entity"
 )
 
-func (s Store) ConnectedTelegram(ctx context.Context) ([]model.Connection, error) {
-	cur, err := s.DB.Collection("chat_connections").Find(ctx, bson.M{"provider": "telegram", "status": "connected", "enabled": true})
+func (s Store) ConnectedTelegram(ctx context.Context) ([]entity.Connection, error) {
+	rows, err := s.DB.Query(ctx, "SELECT "+connectionColumns+" FROM chat_connections WHERE provider = 'telegram' AND status = 'connected' AND enabled")
+	return collect(rows, err, scanConnection)
+}
+
+func (s Store) Undelivered(ctx context.Context, userID string) ([]entity.Match, error) {
+	rows, err := s.DB.Query(ctx, "SELECT "+matchColumns+` FROM job_matches
+		WHERE user_id = $1 AND NOT delivered AND status <> 'dismissed'
+		ORDER BY matched_at DESC, id DESC LIMIT 10`, userID)
+	return collect(rows, err, scanMatch)
+}
+
+func (s Store) RecordDelivery(ctx context.Context, d entity.NotificationDelivery) error {
+	tx, err := s.DB.Begin(ctx)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	defer cur.Close(ctx)
-	var items []model.Connection
-	return items, cur.All(ctx, &items)
-}
-
-func (s Store) Undelivered(ctx context.Context, userID string) ([]model.Match, error) {
-	cur, err := s.DB.Collection("job_matches").Find(ctx, bson.M{"user_id": userID, "delivered": false, "status": bson.M{"$ne": "dismissed"}}, options.Find().SetSort(bson.D{{Key: "matched_at", Value: -1}}).SetLimit(10))
+	defer tx.Rollback(ctx)
+	_, err = tx.Exec(ctx, `INSERT INTO notification_deliveries
+		(user_id, provider, match_ids, status, attempts, sent_at, error, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		d.UserID, d.Provider, d.MatchIDs, d.Status, d.Attempts, d.SentAt, d.Error, d.CreatedAt)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	defer cur.Close(ctx)
-	var matches []model.Match
-	return matches, cur.All(ctx, &matches)
-}
-
-func (s Store) RecordDelivery(ctx context.Context, delivery model.NotificationDelivery) error {
-	_, err := s.DB.Collection("notification_deliveries").InsertOne(ctx, delivery)
-	return err
-}
-
-func (s Store) MarkDelivered(ctx context.Context, userID string, ids []primitive.ObjectID, at time.Time) error {
-	_, err := s.DB.Collection("job_matches").UpdateMany(ctx, bson.M{"_id": bson.M{"$in": ids}, "user_id": userID}, bson.M{"$set": bson.M{"delivered": true, "delivered_at": at}})
-	return err
+	if d.SentAt != nil {
+		_, err = tx.Exec(ctx, "UPDATE job_matches SET delivered = true, delivered_at = $3 WHERE user_id = $1 AND id = ANY($2)", d.UserID, d.MatchIDs, d.SentAt)
+		if err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }

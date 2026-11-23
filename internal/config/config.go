@@ -7,7 +7,7 @@ import (
 )
 
 type Config struct {
-	Port, MongoURI, Database, RedisAddr, RabbitURL               string
+	Port, DatabaseURL, RedisAddr, RabbitURL                      string
 	JWKSURL, JWTIssuer, JWTAudience                              string
 	TelegramBotUsername, TelegramBotToken, TelegramWebhookSecret string
 }
@@ -15,8 +15,7 @@ type Config struct {
 func Load() Config {
 	return Config{
 		Port:                  value("API_PORT", "8080"),
-		MongoURI:              value("MONGODB_URI", "mongodb://localhost:27017"),
-		Database:              value("MONGODB_DATABASE", "hunterjob"),
+		DatabaseURL:           value("DATABASE_URL", "postgres://hunterjob:hunterjob@localhost:5432/hunterjob?sslmode=disable"),
 		RedisAddr:             value("REDIS_ADDR", "localhost:6379"),
 		RabbitURL:             value("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
 		JWKSURL:               value("JWKS_URL", "https://api.gauas.com/.well-known/jwks.json"),

@@ -28,9 +28,6 @@ func NewApplication(ctx context.Context, cfg config.Config) (*Application, error
 		return nil, err
 	}
 	store := repository.Store{DB: resources.Database}
-	if err := store.Indexes(ctx); err != nil {
-		return nil, errors.Join(err, resources.Close())
-	}
 	telegram := &agent.TelegramProvider{BotUsername: cfg.TelegramBotUsername, BotToken: cfg.TelegramBotToken, WebhookSecret: cfg.TelegramWebhookSecret, Redis: resources.Cache, Store: store}
 	verifier, err := authn.NewVerifier(authn.Config{JWKSURL: cfg.JWKSURL, Issuer: cfg.JWTIssuer, Audience: cfg.JWTAudience})
 	if err != nil {

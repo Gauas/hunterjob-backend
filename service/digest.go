@@ -3,10 +3,10 @@ package service
 import (
 	"context"
 	"github.com/go-redis/redis/v8"
+	"github.com/hunterjob/hunterjob/api/entity"
 	"github.com/hunterjob/hunterjob/api/internal/agent"
-	"github.com/hunterjob/hunterjob/api/model"
 	"github.com/hunterjob/hunterjob/api/repository"
-	"go.mongodb.org/mongo-driver/bson/primitive"
+
 	"log"
 	"strconv"
 	"strings"
@@ -62,11 +62,11 @@ func deliverDaily(ctx context.Context, store repository.Store, telegram *agent.T
 			_ = cache.Del(ctx, lock).Err()
 			log.Printf("digest %s: %v", connection.UserID, err)
 		}
-		ids := make([]primitive.ObjectID, len(matches))
+		ids := make([]string, len(matches))
 		for i, match := range matches {
 			ids[i] = match.ID
 		}
-		delivery := model.NotificationDelivery{UserID: connection.UserID, Provider: "telegram", MatchIDs: ids, Status: status, Attempts: 1, CreatedAt: time.Now().UTC()}
+		delivery := entity.NotificationDelivery{UserID: connection.UserID, Provider: "telegram", MatchIDs: ids, Status: status, Attempts: 1, CreatedAt: time.Now().UTC()}
 		if err == nil {
 			sent := time.Now().UTC()
 			delivery.SentAt = &sent
@@ -76,12 +76,9 @@ func deliverDaily(ctx context.Context, store repository.Store, telegram *agent.T
 		if recordErr := store.RecordDelivery(ctx, delivery); recordErr != nil {
 			log.Printf("record digest %s: %v", connection.UserID, recordErr)
 		}
-		if err == nil {
-			_ = store.MarkDelivered(ctx, connection.UserID, ids, time.Now().UTC())
-		}
 	}
 }
-func formatDigest(matches []model.Match) string {
+func formatDigest(matches []entity.Match) string {
 	var b strings.Builder
 	b.WriteString("New jobs matched for you\n\n")
 	for i, item := range matches {

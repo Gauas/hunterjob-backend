@@ -2,82 +2,41 @@ package repository
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"fmt"
-	"net/url"
-	"regexp"
-	"strings"
-	"time"
 
-	"github.com/hunterjob/hunterjob/api/internal/geography"
-	"github.com/hunterjob/hunterjob/api/model"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
+	"github.com/hunterjob/hunterjob/api/entity"
 )
 
-func (s Store) ProcessJob(ctx context.Context, item model.LakeJob) (int, error) {
-	if item.ID == "" || item.Title == "" || item.Status != "active" {
-		return 0, nil
-	}
-	u, err := url.Parse(item.JobURL)
-	if err != nil || u.Hostname() == "" || (u.Scheme != "http" && u.Scheme != "https") {
-		return 0, nil
-	}
-	if logo := strings.TrimSpace(item.CompanyLogoURL); logo != "" {
-		parsed, parseErr := url.Parse(logo)
-		if parseErr != nil || parsed.Hostname() == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-			item.CompanyLogoURL = ""
-		}
-	}
-	filter := bson.M{"enabled": true}
-	if !geography.IsHoChiMinh(item.Location) && !strings.Contains(strings.ToLower(item.Location), "remote") {
-		filter["locations"] = bson.M{"$regex": "^" + regexp.QuoteMeta(strings.TrimSpace(item.Location)) + "$", "$options": "i"}
-	}
-	cur, err := s.DB.Collection("search_preferences").Find(ctx, filter)
-	if err != nil {
-		return 0, err
-	}
-	defer cur.Close(ctx)
-	count := 0
-	for cur.Next(ctx) {
-		var preference model.Preference
-		if err := cur.Decode(&preference); err != nil {
-			return count, err
-		}
-		level, keywords, ok := model.Evaluate(item, preference)
-		if !ok {
-			continue
-		}
-		now := time.Now().UTC()
-		reason := fmt.Sprintf("%s in %s matches your %s preference", item.Title, item.Location, preference.Role)
-		if len(keywords) > 0 {
-			reason += " and mentions " + strings.Join(keywords, ", ")
-		}
-		match := model.Match{UserID: preference.UserID, JobID: item.ID, DedupeKey: dedupeKey(item), PreferenceID: preference.ID, MatchLevel: level, MatchedKeywords: keywords, MatchReason: reason, Status: "new", MatchedAt: now, CreatedAt: now, Job: model.JobSnapshot{Title: item.Title, ExperienceMin: item.ExperienceMin, ExperienceMax: item.ExperienceMax, CompanyName: item.CompanyName, CompanyLogoURL: item.CompanyLogoURL, JobURL: item.JobURL}}
-		_, err := s.DB.Collection("job_matches").InsertOne(ctx, match)
-		if mongo.IsDuplicateKeyError(err) {
-			// A replay from Job Lake can enrich an existing match without resetting its status.
-			_, err = s.DB.Collection("job_matches").UpdateOne(ctx, bson.M{"user_id": preference.UserID, "$or": bson.A{bson.M{"dedupe_key": match.DedupeKey}, bson.M{"job_id": match.JobID}}}, bson.M{"$set": bson.M{"job": match.Job}})
-			if err != nil {
-				return count, err
-			}
-			continue
-		}
-		if err != nil {
-			return count, err
-		}
-		count++
-	}
-	return count, cur.Err()
+func (s Store) ActivePreferences(ctx context.Context) ([]entity.Preference, error) {
+	rows, err := s.DB.Query(ctx, "SELECT "+preferenceColumns+" FROM search_preferences WHERE enabled")
+	return collect(rows, err, scanPreference)
 }
-func dedupeKey(item model.LakeJob) string {
-	identity := item.ID
-	if item.ExternalID != "" {
-		identity = item.Source + "|" + item.ExternalID
-	} else if item.JobURL != "" {
-		identity = item.JobURL
+
+func (s Store) SaveJobMatch(ctx context.Context, match entity.Match) (bool, error) {
+	tx, err := s.DB.Begin(ctx)
+	if err != nil {
+		return false, err
 	}
-	hash := sha256.Sum256([]byte(strings.ToLower(strings.TrimSpace(identity))))
-	return hex.EncodeToString(hash[:])
+	defer tx.Rollback(ctx)
+	result, err := tx.Exec(ctx, `
+		INSERT INTO job_matches (user_id, job_id, dedupe_key, preference_id, match_level,
+			matched_keywords, match_reason, status, matched_at, created_at, job)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		ON CONFLICT DO NOTHING`, match.UserID, match.JobID, match.DedupeKey, match.PreferenceID,
+		match.MatchLevel, match.MatchedKeywords, match.MatchReason, match.Status, match.MatchedAt,
+		match.CreatedAt, match.Job)
+	if err != nil {
+		return false, err
+	}
+	inserted := result.RowsAffected() == 1
+	if !inserted {
+		// Job ID takes precedence if the event matches two existing aliases.
+		_, err = tx.Exec(ctx, `UPDATE job_matches SET job = $4 WHERE id = (
+			SELECT id FROM job_matches WHERE user_id = $1 AND (job_id = $2 OR dedupe_key = $3)
+			ORDER BY (job_id = $2) DESC LIMIT 1
+		)`, match.UserID, match.JobID, match.DedupeKey, match.Job)
+		if err != nil {
+			return false, err
+		}
+	}
+	return inserted, tx.Commit(ctx)
 }

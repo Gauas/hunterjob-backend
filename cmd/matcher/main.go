@@ -9,10 +9,10 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/hunterjob/hunterjob/api/entity"
 	"github.com/hunterjob/hunterjob/api/infra"
 	"github.com/hunterjob/hunterjob/api/internal/agent"
 	"github.com/hunterjob/hunterjob/api/internal/config"
-	"github.com/hunterjob/hunterjob/api/model"
 	"github.com/hunterjob/hunterjob/api/repository"
 	"github.com/hunterjob/hunterjob/api/service"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -33,9 +33,6 @@ func run(ctx context.Context, cfg config.Config) error {
 	}
 	defer resources.Close()
 	store := repository.Store{DB: resources.Database}
-	if err := store.Indexes(ctx); err != nil {
-		return fmt.Errorf("create indexes: %w", err)
-	}
 	conn, err := amqp.Dial(cfg.RabbitURL)
 	if err != nil {
 		return fmt.Errorf("connect rabbitmq: %w", err)
@@ -61,6 +58,7 @@ func run(ctx context.Context, cfg config.Config) error {
 	}
 	telegram := &agent.TelegramProvider{BotUsername: cfg.TelegramBotUsername, BotToken: cfg.TelegramBotToken, WebhookSecret: cfg.TelegramWebhookSecret, Redis: resources.Cache, Store: store}
 	go service.DailyLoop(ctx, store, telegram, resources.Cache)
+	matcher := service.Matcher{Store: store}
 	for {
 		select {
 		case <-ctx.Done():
@@ -69,12 +67,12 @@ func run(ctx context.Context, cfg config.Config) error {
 			if !ok {
 				return errors.New("job.new consumer closed")
 			}
-			var job model.LakeJob
+			var job entity.LakeJob
 			if json.Unmarshal(message.Body, &job) != nil || job.ID == "" {
 				_ = message.Nack(false, false)
 				continue
 			}
-			if _, err := store.ProcessJob(ctx, job); err != nil {
+			if _, err := matcher.ProcessJob(ctx, job); err != nil {
 				log.Printf("match job %s: %v", job.ID, err)
 				_ = message.Nack(false, true)
 			} else {
