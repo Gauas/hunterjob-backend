@@ -28,13 +28,17 @@ func NewApplication(ctx context.Context, cfg config.Config) (*Application, error
 		return nil, err
 	}
 	store := repository.Store{DB: resources.Database}
-	telegram := &agent.TelegramProvider{BotUsername: cfg.TelegramBotUsername, BotToken: cfg.TelegramBotToken, WebhookSecret: cfg.TelegramWebhookSecret, Redis: resources.Cache, Store: store}
+	telegram := &agent.TelegramProvider{BotUsername: cfg.TelegramBotUsername, BotToken: cfg.TelegramBotToken, WebhookSecret: cfg.TelegramWebhookSecret, Store: store}
+	providers := agent.ProviderRegistry{}
+	if telegram.Available() {
+		providers["telegram"] = telegram
+	}
 	verifier, err := authn.NewVerifier(authn.Config{JWKSURL: cfg.JWKSURL, Issuer: cfg.JWTIssuer, Audience: cfg.JWTAudience})
 	if err != nil {
 		return nil, errors.Join(err, resources.Close())
 	}
 	ctrl := controller.Controller{
-		Agent:    controller.Handler{Store: store, Providers: agent.ProviderRegistry{Telegram: telegram}},
+		Agent:    controller.Handler{Store: store, Providers: providers},
 		Telegram: telegram,
 		Auth:     auth.Middleware{Verifier: verifier},
 		Ready:    resources.Ready,

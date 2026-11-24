@@ -30,7 +30,7 @@ func run(ctx context.Context, cfg config.Config) error {
 	store := repository.Store{DB: resources.Database}
 	telegram := &agent.TelegramProvider{
 		BotUsername: cfg.TelegramBotUsername, BotToken: cfg.TelegramBotToken,
-		WebhookSecret: cfg.TelegramWebhookSecret, Redis: resources.Cache, Store: store,
+		WebhookSecret: cfg.TelegramWebhookSecret, Store: store,
 	}
 	service.Digest{Store: store, Telegram: telegram}.Run(ctx)
 	return nil
