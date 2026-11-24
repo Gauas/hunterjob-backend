@@ -6,13 +6,17 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/hunterjob/hunterjob/api/internal/agent"
 	"github.com/hunterjob/hunterjob/api/internal/auth"
 )
 
+type Webhook struct {
+	Verify  gin.HandlerFunc
+	Receive gin.HandlerFunc
+}
+
 type Controller struct {
 	Agent    Handler
-	Telegram *agent.TelegramProvider
+	Webhooks map[string]Webhook
 	Auth     auth.Middleware
 	Ready    func(context.Context) error
 }
@@ -29,7 +33,13 @@ func (ctrl Controller) Register(router *gin.Engine) {
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "ready"})
 	})
-	v.POST("/webhooks/telegram", ctrl.Telegram.Webhook)
+	for provider, webhook := range ctrl.Webhooks {
+		path := "/webhooks/" + provider
+		if webhook.Verify != nil {
+			v.GET(path, webhook.Verify)
+		}
+		v.POST(path, webhook.Receive)
+	}
 	personal := v.Group("", ctrl.Auth.Require())
 	personal.GET("/dashboard", ctrl.Agent.Dashboard)
 	personal.GET("/search-preference", ctrl.Agent.GetPreference)

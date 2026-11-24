@@ -30,8 +30,15 @@ func NewApplication(ctx context.Context, cfg config.Config) (*Application, error
 	store := repository.Store{DB: resources.Database}
 	telegram := &agent.TelegramProvider{BotUsername: cfg.TelegramBotUsername, BotToken: cfg.TelegramBotToken, WebhookSecret: cfg.TelegramWebhookSecret, Store: store}
 	providers := agent.ProviderRegistry{}
+	webhooks := map[string]controller.Webhook{}
 	if telegram.Available() {
 		providers["telegram"] = telegram
+		webhooks["telegram"] = controller.Webhook{Receive: telegram.Webhook}
+	}
+	messenger := agent.NewMessenger(store, cfg.MessengerPageID, cfg.MessengerPageToken, cfg.MessengerAppSecret, cfg.MessengerVerifyToken)
+	if messenger != nil {
+		providers["messenger"] = messenger
+		webhooks["messenger"] = controller.Webhook{Verify: messenger.Verify, Receive: messenger.Webhook}
 	}
 	verifier, err := authn.NewVerifier(authn.Config{JWKSURL: cfg.JWKSURL, Issuer: cfg.JWTIssuer, Audience: cfg.JWTAudience})
 	if err != nil {
@@ -39,7 +46,7 @@ func NewApplication(ctx context.Context, cfg config.Config) (*Application, error
 	}
 	ctrl := controller.Controller{
 		Agent:    controller.Handler{Store: store, Providers: providers},
-		Telegram: telegram,
+		Webhooks: webhooks,
 		Auth:     auth.Middleware{Verifier: verifier},
 		Ready:    resources.Ready,
 	}

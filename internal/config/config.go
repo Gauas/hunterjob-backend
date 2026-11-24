@@ -7,13 +7,18 @@ import (
 )
 
 type Config struct {
-	Port, DatabaseURL, RabbitURL                                 string
-	JWKSURL, JWTIssuer, JWTAudience                              string
-	TelegramBotUsername, TelegramBotToken, TelegramWebhookSecret string
+	MessengerPageID, MessengerPageToken, MessengerAppSecret, MessengerVerifyToken string
+	Port, DatabaseURL, RabbitURL                                                  string
+	JWKSURL, JWTIssuer, JWTAudience                                               string
+	TelegramBotUsername, TelegramBotToken, TelegramWebhookSecret                  string
 }
 
 func Load() Config {
 	return Config{
+		MessengerPageID:       os.Getenv("MESSENGER_PAGE_ID"),
+		MessengerPageToken:    os.Getenv("MESSENGER_PAGE_TOKEN"),
+		MessengerAppSecret:    os.Getenv("MESSENGER_APP_SECRET"),
+		MessengerVerifyToken:  os.Getenv("MESSENGER_VERIFY_TOKEN"),
 		Port:                  value("API_PORT", "8080"),
 		DatabaseURL:           value("DATABASE_URL", "postgres://hunterjob:hunterjob@localhost:5432/hunterjob?sslmode=disable"),
 		RabbitURL:             value("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
